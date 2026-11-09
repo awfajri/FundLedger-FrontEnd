@@ -1,38 +1,88 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import axios from 'axios'
+import Swal from 'sweetalert2'
 
-// Simulasi data pengajuan dari backend
-const pendingRequests = ref([
-  {
-    id: 'REQ-001',
-    date: 'Hari ini, 09:15',
-    category: 'Perlengkapan',
-    amount: 'Rp 450.000',
-    description: 'Pembelian Server Domain',
-    maker: 'Auf Fajri (Bendahara)',
-    proofUrl: '#', // Nanti bisa diklik buat buka modal gambar/PDF
-  },
-  {
-    id: 'REQ-002',
-    date: 'Kemarin, 14:20',
-    category: 'Konsumsi',
-    amount: 'Rp 1.200.000',
-    description: 'Konsumsi Rapat Pleno Tengah Tahun',
-    maker: 'Auf Fajri (Bendahara)',
-    proofUrl: '#',
-  },
-])
+const pendingRequests = ref<any[]>([])
+const isLoading = ref(true)
 
-const handleApprove = (id: string) => {
-  console.log(`Menyetujui transaksi: ${id}`)
-  alert(`Transaksi ${id} disetujui! Backend akan mengirim ke Smart Contract.`)
-  pendingRequests.value = pendingRequests.value.filter((req) => req.id !== id)
+// Ambil data pending dari backend saat halaman dibuka
+const fetchPendingRequests = async () => {
+  try {
+    const response = await axios.get('http://127.0.0.1:8000/api/transactions?status=pending')
+    pendingRequests.value = response.data.data || response.data // Sesuaikan dengan format response Indra
+  } catch (error) {
+    console.error('Gagal mengambil data:', error)
+  } finally {
+    isLoading.value = false
+  }
 }
 
-const handleReject = (id: string) => {
-  console.log(`Menolak transaksi: ${id}`)
-  alert(`Transaksi ${id} ditolak. Akan dikembalikan ke Bendahara.`)
-  pendingRequests.value = pendingRequests.value.filter((req) => req.id !== id)
+onMounted(() => {
+  fetchPendingRequests()
+})
+
+const handleApprove = async (id: number) => {
+  const result = await Swal.fire({
+    title: 'Setujui Transaksi?',
+    text: 'Dana akan dipotong dari saldo organisasi.',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#5B21B6',
+    cancelButtonColor: '#94A3B8',
+    confirmButtonText: 'Ya, Setujui',
+    cancelButtonText: 'Batal',
+  })
+
+  if (result.isConfirmed) {
+    try {
+      await axios.post(`http://127.0.0.1:8000/api/transactions/${id}/approve`)
+
+      Swal.fire({
+        title: 'Disetujui!',
+        text: 'Transaksi telah dicatat ke Ledger.',
+        icon: 'success',
+        confirmButtonColor: '#5B21B6',
+      })
+      fetchPendingRequests() // Refresh daftar
+    } catch (error: any) {
+      Swal.fire('Gagal!', error.response?.data?.message || 'Error server.', 'error')
+    }
+  }
+}
+
+const handleReject = async (id: number) => {
+  const { value: reason } = await Swal.fire({
+    title: 'Tolak Transaksi',
+    input: 'textarea',
+    inputLabel: 'Alasan Penolakan',
+    inputPlaceholder: 'Tuliskan alasan pengajuan ini ditolak...',
+    showCancelButton: true,
+    confirmButtonColor: '#EF4444',
+    cancelButtonColor: '#94A3B8',
+    confirmButtonText: 'Tolak',
+    inputValidator: (value) => {
+      if (!value) return 'Alasan wajib diisi!'
+    },
+  })
+
+  if (reason) {
+    try {
+      await axios.post(`http://127.0.0.1:8000/api/transactions/${id}/reject`, {
+        rejection_reason: reason,
+      })
+
+      Swal.fire({
+        title: 'Ditolak!',
+        text: 'Transaksi dikembalikan ke pembuat.',
+        icon: 'success',
+        confirmButtonColor: '#5B21B6',
+      })
+      fetchPendingRequests()
+    } catch (error: any) {
+      Swal.fire('Gagal!', error.response?.data?.message || 'Error server.', 'error')
+    }
+  }
 }
 </script>
 

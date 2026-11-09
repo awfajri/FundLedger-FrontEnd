@@ -1,10 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import DashboardView from '../views/DashboardView.vue'
-import CashOutView from '../views/CashOutView.vue'
-import CashInView from '../views/CashInView.vue'
-import ApprovalView from '../views/ApprovalView.vue'
-import LoginView from '../views/LoginView.vue'
-import { useAuthStore } from '../stores/auth'
+import DashboardView from '../../modules/dashboard/views/DashboardView.vue'
+import CashOutView from '../../modules/transactions/views/CashOutView.vue'
+import CashInView from '../../modules/transactions/views/CashInView.vue'
+import ApprovalView from '../../modules/transactions/views/ApprovalView.vue'
+import LoginView from '../../modules/auth/views/LoginView.vue'
+import { useAuthStore } from '../../modules/auth/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -22,17 +22,15 @@ const router = createRouter({
   ],
 })
 
-// Navigation Guard (Satpam Rute)
-router.beforeEach((to, from, next) => {
+// Navigation Guard (Gaya Vue Router v4 Modern)
+router.beforeEach((to) => {
   const auth = useAuthStore()
   const isAuth = auth.isAuthenticated()
 
   if (to.meta.requiresAuth && !isAuth) {
-    next('/login') // Belum login? Tendang ke halaman login
+    return '/login'
   } else if (to.name === 'login' && isAuth) {
-    next('/') // Udah login kok buka /login lagi? Balikin ke dashboard
-  } else {
-    next() // Aman, biarkan lewat
+    return '/'
   }
 })
 

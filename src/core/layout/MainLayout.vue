@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { useAuthStore } from '../stores/auth'
+import { useAuthStore } from '../../modules/auth/stores/auth'
+
 const auth = useAuthStore()
 </script>
 
@@ -88,18 +89,23 @@ const auth = useAuthStore()
       <header
         class="h-16 bg-surface border-b border-slate-200 flex items-center px-8 justify-between"
       >
-        <h1 class="font-semibold text-lg text-slate-800">Organisasi Himaikef</h1>
+        <h1 class="font-semibold text-lg text-slate-800">
+          {{ auth.user?.organization?.name || 'Organisasi' }}
+        </h1>
 
         <!-- User Profile Data Bound to Pinia -->
         <div class="flex items-center gap-3">
           <div class="text-right hidden sm:block">
-            <p class="text-sm font-semibold text-slate-900 leading-none">{{ auth.user.name }}</p>
-            <p class="text-xs text-slate-500 mt-1">{{ auth.user.roleLabel }}</p>
+            <p class="text-sm font-semibold text-slate-900 leading-none">
+              {{ auth.user?.name || 'Memuat...' }}
+            </p>
+            <p class="text-xs text-slate-500 mt-1 uppercase">{{ auth.user?.role || 'User' }}</p>
           </div>
           <div
-            class="w-9 h-9 rounded-full bg-secondary text-white flex items-center justify-center font-bold text-sm"
+            class="w-9 h-9 rounded-full bg-secondary text-white flex items-center justify-center font-bold text-sm uppercase"
           >
-            {{ auth.user.initials }}
+            <!-- Ambil huruf pertama nama -->
+            {{ auth.user?.name?.charAt(0) || 'U' }}
           </div>
         </div>
       </header>
