@@ -68,6 +68,18 @@ const auth = useAuthStore()
           <span>Persetujuan</span>
         </RouterLink>
       </nav>
+      <!-- Akhir dari elemen </nav> -->
+
+      <!-- Tombol Logout -->
+      <div class="mt-auto p-4 border-t border-slate-100">
+        <button
+          @click="auth.logout()"
+          class="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 transition-colors font-medium"
+        >
+          <i class="pi pi-sign-out"></i>
+          <span>Keluar Sistem</span>
+        </button>
+      </div>
     </aside>
 
     <!-- Main Content Area -->
