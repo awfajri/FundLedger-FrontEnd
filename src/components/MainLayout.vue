@@ -21,17 +21,18 @@ const auth = useAuthStore()
         </RouterLink>
 
         <!-- Menu Cash In (Hanya Aktif untuk Maker/Bendahara) -->
-        <div
+        <RouterLink
+          to="/cash-in"
           :class="[
             'flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors',
             auth.isMaker()
               ? 'text-slate-700 hover:bg-slate-50 cursor-pointer'
-              : 'text-slate-400 cursor-not-allowed opacity-60',
+              : 'text-slate-400 cursor-not-allowed opacity-60 pointer-events-none',
           ]"
         >
           <i class="pi pi-wallet"></i>
           <span>Cash In</span>
-        </div>
+        </RouterLink>
 
         <!-- Menu Cash Out -->
         <RouterLink
@@ -45,6 +46,26 @@ const auth = useAuthStore()
         >
           <i class="pi pi-send"></i>
           <span>Cash Out</span>
+        </RouterLink>
+
+        <!-- Menu Persetujuan (Hanya Aktif untuk Checker/Ketua) -->
+        <RouterLink
+          to="/approvals"
+          :class="[
+            'flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors',
+            auth.isChecker() ? 'text-slate-700 hover:bg-slate-50 cursor-pointer' : 'hidden', // Jika bukan ketua, menu ini kita sembunyikan sepenuhnya (hidden) agar UI rapi
+          ]"
+        >
+          <div class="relative">
+            <i class="pi pi-check-square"></i>
+            <span v-if="auth.isChecker()" class="absolute -top-1 -right-2 flex h-2 w-2">
+              <span
+                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"
+              ></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+            </span>
+          </div>
+          <span>Persetujuan</span>
         </RouterLink>
       </nav>
     </aside>

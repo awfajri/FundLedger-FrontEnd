@@ -6,8 +6,8 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref({
     name: 'Auf Fajri',
     initials: 'AF',
-    role: 'maker', // 'maker' = Bendahara, 'checker' = Ketua, 'viewer' = Anggota
-    roleLabel: 'Bendahara (Maker)',
+    role: 'checker', // 'maker' = Bendahara, 'checker' = Ketua, 'viewer' = Anggota
+    roleLabel: 'Ketua (Checker)',
   })
 
   // Fungsi untuk ngecek hak akses (Role-Based Access Control)
