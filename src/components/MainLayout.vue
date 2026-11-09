@@ -33,18 +33,19 @@ const auth = useAuthStore()
           <span>Cash In</span>
         </div>
 
-        <!-- Menu Cash Out (Hanya Aktif untuk Maker/Bendahara) -->
-        <div
+        <!-- Menu Cash Out -->
+        <RouterLink
+          to="/cash-out"
           :class="[
             'flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors',
             auth.isMaker()
               ? 'text-slate-700 hover:bg-slate-50 cursor-pointer'
-              : 'text-slate-400 cursor-not-allowed opacity-60',
+              : 'text-slate-400 cursor-not-allowed opacity-60 pointer-events-none',
           ]"
         >
           <i class="pi pi-send"></i>
           <span>Cash Out</span>
-        </div>
+        </RouterLink>
       </nav>
     </aside>
 
@@ -54,7 +55,7 @@ const auth = useAuthStore()
       <header
         class="h-16 bg-surface border-b border-slate-200 flex items-center px-8 justify-between"
       >
-        <h1 class="font-semibold text-lg text-slate-800">Organisasi Himtika</h1>
+        <h1 class="font-semibold text-lg text-slate-800">Organisasi Himaikef</h1>
 
         <!-- User Profile Data Bound to Pinia -->
         <div class="flex items-center gap-3">
