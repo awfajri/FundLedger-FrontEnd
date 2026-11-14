@@ -7,3 +7,10 @@
 body {
   @apply bg-background text-slate-900 font-sans antialiased;
 }
+
+#p-license-host {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}

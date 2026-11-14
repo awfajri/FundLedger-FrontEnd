@@ -1,23 +1,27 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import { RouterLink } from 'vue-router'
 import Card from 'primevue/card'
-import { useAuthStore } from '../../auth/stores/auth' // <-- Tambahkan ini
+import { useAuthStore } from '../../auth/stores/auth'
+import { transactionService } from '../../../core/api/transactionService'
+import type { DashboardMetrics, Transaction } from '../../../core/types/transaction'
 
-const auth = useAuthStore() // <-- Tambahkan ini
+const auth = useAuthStore()
 const isLoading = ref(true)
+const isPendingBannerOpen = ref(true)
 
-// State untuk 3 Metrik Atas
-const metrics = ref({
+const metrics = ref<DashboardMetrics>({
   balance: 0,
   incomeThisMonth: 0,
+  expenseThisMonth: 0,
+  incomeYTD: 0,
+  expenseYTD: 0,
+  totalTransactionsCount: 0,
   pendingCount: 0,
 })
 
-// State untuk Tabel Transaksi
-const recentTransactions = ref<any[]>([])
+const recentTransactions = ref<Transaction[]>([])
 
-// Helper: Format angka ke Rupiah
 const formatRupiah = (value: number) => {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -26,7 +30,6 @@ const formatRupiah = (value: number) => {
   }).format(value)
 }
 
-// Helper: Format tanggal
 const formatDate = (dateString: string) => {
   if (!dateString) return '-'
   const date = new Date(dateString)
@@ -39,49 +42,22 @@ const formatDate = (dateString: string) => {
   }).format(date)
 }
 
-// Tarik data dari API Laravel
 const fetchDashboardData = async () => {
   isLoading.value = true
 
-  // ==========================================
-  // 1. Ambil Metrik Dashboard (Isolasi Error)
-  // ==========================================
   try {
-    // Coba tebak route Indra, kalau masih 404 nanti tanya ke Indra route tepatnya apa
-    const resMetrics = await axios.get('http://127.0.0.1:8000/api/dashboard')
-    const data = resMetrics.data.data || resMetrics.data
+    const [metricsData, txData] = await Promise.all([
+      transactionService.getMetrics(),
+      transactionService.getTransactions({ limit: 5 }),
+    ])
 
-    metrics.value = {
-      balance:
-        parseFloat(data.balance || data.total_saldo) ||
-        parseFloat(auth.user?.organization?.balance) ||
-        0,
-      incomeThisMonth: parseFloat(data.income_this_month || data.pemasukan_bulan_ini) || 0,
-      pendingCount: parseInt(data.pending_count || data.total_pending) || 0,
-    }
+    metrics.value = metricsData
+    recentTransactions.value = txData
   } catch (error) {
-    console.warn('⚠️ API Dashboard 404 / Belum siap. Menggunakan Saldo Fallback dari profil user.')
-    // Fallback ambil saldo dari data user saat login
-    metrics.value.balance = parseFloat(auth.user?.organization?.balance) || 0
+    console.error('Error memuat data dashboard:', error)
+  } finally {
+    isLoading.value = false
   }
-
-  // ==========================================
-  // 2. Ambil Riwayat Transaksi (Isolasi Error)
-  // ==========================================
-  try {
-    const resTx = await axios.get('http://127.0.0.1:8000/api/transactions?limit=5')
-
-    let txData = resTx.data.data || resTx.data
-    if (txData && txData.data) {
-      txData = txData.data // Jika pakai pagination Laravel
-    }
-
-    recentTransactions.value = Array.isArray(txData) ? txData : []
-  } catch (error) {
-    console.error('❌ Gagal mengambil riwayat transaksi:', error)
-  }
-
-  isLoading.value = false
 }
 
 onMounted(() => {
@@ -91,147 +67,245 @@ onMounted(() => {
 
 <template>
   <div class="max-w-6xl mx-auto space-y-6">
-    <div class="flex justify-between items-end">
-      <h2 class="text-2xl font-semibold text-slate-900">Ringkasan Keuangan</h2>
-      <button
-        @click="fetchDashboardData"
-        class="text-slate-400 hover:text-primary transition-colors"
-        title="Refresh Data"
-      >
-        <i class="pi pi-refresh" :class="{ 'animate-spin': isLoading }"></i>
-      </button>
+    <!-- Header Dashboard & Welcome -->
+    <div>
+      <div class="flex items-center gap-2">
+        <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Ringkasan Keuangan</h2>
+        <button
+          @click="fetchDashboardData"
+          class="text-slate-400 hover:text-primary p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+          title="Segarkan data kas"
+        >
+          <i class="pi pi-refresh text-sm" :class="{ 'animate-spin': isLoading }"></i>
+        </button>
+      </div>
+      <p class="text-xs sm:text-sm text-slate-500 mt-1">
+        Pantau saldo kas organisasi, status persetujuan transaksi, dan riwayat ledger secara real-time.
+      </p>
     </div>
 
-    <!-- Grid Metrik -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <!-- Card Total Saldo -->
+    <!-- Alert Khusus Checker jika ada pengajuan pending (Collapsible) -->
+    <div
+      v-if="auth.isChecker() && metrics.pendingCount > 0 && isPendingBannerOpen"
+      class="bg-amber-50/80 border border-amber-200/90 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-sm transition-all"
+    >
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold shrink-0">
+          <i class="pi pi-bell"></i>
+        </div>
+        <div>
+          <h4 class="text-sm font-bold text-amber-900">
+            Ada {{ metrics.pendingCount }} Pengeluaran Kas Menunggu Persetujuan
+          </h4>
+          <p class="text-xs text-amber-800 mt-0.5">
+            Sebagai Ketua, Anda dapat memeriksa rincian dokumen pengeluaran dan memberikan otorisasi sebelum dana dicairkan.
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+        <RouterLink
+          to="/approvals"
+          class="px-4 py-2 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 transition-colors shadow-sm whitespace-nowrap"
+        >
+          Tinjau Pengajuan &rarr;
+        </RouterLink>
+        <button
+          @click="isPendingBannerOpen = false"
+          class="text-amber-500 hover:text-amber-800 p-1.5 rounded-lg hover:bg-amber-100 transition-colors"
+          title="Tutup pemberitahuan"
+        >
+          <i class="pi pi-times text-xs"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Tombol Aksi Cepat Sesuai Peran -->
+    <div class="flex flex-wrap gap-2.5">
+      <template v-if="auth.isMaker()">
+        <RouterLink
+          to="/cash-in"
+          class="px-3.5 py-2 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors flex items-center gap-1.5 shadow-sm"
+        >
+          <i class="pi pi-plus"></i> Catat Kas Masuk
+        </RouterLink>
+        <RouterLink
+          to="/cash-out"
+          class="px-3.5 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors flex items-center gap-1.5 shadow-sm"
+        >
+          <i class="pi pi-send"></i> Ajukan Kas Keluar
+        </RouterLink>
+      </template>
+
+      <RouterLink
+        to="/ledger"
+        class="px-3.5 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-sm"
+      >
+        <i class="pi pi-database text-primary"></i> Buku Besar Kas
+      </RouterLink>
+
+      <RouterLink
+        to="/reports"
+        class="px-3.5 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-sm"
+      >
+        <i class="pi pi-file text-slate-600"></i> Laporan Keuangan
+      </RouterLink>
+    </div>
+
+    <!-- Grid Metrik Utama: Responsif 2 Kolom di Tablet, 4 Kolom di Desktop -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- 1. Total Saldo Kas -->
       <Card class="shadow-sm border border-slate-200">
         <template #title>
-          <div class="text-sm font-medium text-slate-500">Total Saldo (Off-Chain Cache)</div>
+          <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+            <span>Total Saldo Kas</span>
+            <i class="pi pi-wallet text-primary"></i>
+          </div>
         </template>
         <template #content>
-          <div v-if="isLoading" class="h-9 bg-slate-100 animate-pulse rounded mt-2 w-3/4"></div>
-          <div v-else class="text-3xl font-semibold text-primary tabular-nums mt-2">
+          <div v-if="isLoading" class="h-8 bg-slate-100 animate-pulse rounded mt-2 w-3/4"></div>
+          <div v-else class="text-2xl font-bold text-primary tabular-nums mt-1">
             {{ formatRupiah(metrics.balance) }}
           </div>
+          <p class="text-[11px] text-slate-400 mt-1">Terverifikasi di Blockchain</p>
         </template>
       </Card>
 
-      <!-- Card Pemasukan -->
+      <!-- 2. Pemasukan Bulan Ini (MTD) -->
       <Card class="shadow-sm border border-slate-200">
         <template #title>
-          <div class="text-sm font-medium text-slate-500">Pemasukan Bulan Ini</div>
+          <div class="text-xs font-semibold text-emerald-600 uppercase tracking-wider flex items-center justify-between">
+            <span>Pemasukan Bulan Ini</span>
+            <i class="pi pi-arrow-up-right text-emerald-600"></i>
+          </div>
         </template>
         <template #content>
           <div v-if="isLoading" class="h-8 bg-slate-100 animate-pulse rounded mt-2 w-2/3"></div>
-          <div v-else class="text-2xl font-medium text-slate-800 tabular-nums mt-2">
+          <div v-else class="text-2xl font-bold text-emerald-600 tabular-nums mt-1">
             + {{ formatRupiah(metrics.incomeThisMonth) }}
           </div>
+          <p class="text-[11px] text-slate-400 mt-1">Total Tahun Ini: {{ formatRupiah(metrics.incomeYTD) }}</p>
         </template>
       </Card>
 
-      <!-- Card Pengeluaran -->
+      <!-- 3. Pengeluaran Bulan Ini (MTD) -->
       <Card class="shadow-sm border border-slate-200">
         <template #title>
-          <div class="text-sm font-medium text-slate-500">Pengajuan Menunggu</div>
+          <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+            <span>Pengeluaran Bulan Ini</span>
+            <i class="pi pi-arrow-down-left text-slate-600"></i>
+          </div>
+        </template>
+        <template #content>
+          <div v-if="isLoading" class="h-8 bg-slate-100 animate-pulse rounded mt-2 w-2/3"></div>
+          <div v-else class="text-2xl font-bold text-slate-800 tabular-nums mt-1">
+            - {{ formatRupiah(metrics.expenseThisMonth) }}
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">Total Tahun Ini: {{ formatRupiah(metrics.expenseYTD) }}</p>
+        </template>
+      </Card>
+
+      <!-- 4. Antrean Persetujuan / Total Tx -->
+      <Card class="shadow-sm border border-slate-200">
+        <template #title>
+          <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+            <span>Menunggu Persetujuan</span>
+            <i class="pi pi-clock text-amber-500"></i>
+          </div>
         </template>
         <template #content>
           <div v-if="isLoading" class="h-8 bg-slate-100 animate-pulse rounded mt-2 w-1/2"></div>
           <div
             v-else
-            class="text-2xl font-medium text-orange-600 tabular-nums mt-2 flex items-center gap-2"
+            class="text-2xl font-bold tabular-nums mt-1 flex items-center gap-1.5"
+            :class="metrics.pendingCount > 0 ? 'text-amber-600' : 'text-slate-700'"
           >
-            <i class="pi pi-clock"></i> {{ metrics.pendingCount }} Transaksi
+            {{ metrics.pendingCount }} Transaksi
           </div>
+          <p class="text-[11px] text-slate-400 mt-1">Total {{ metrics.totalTransactionsCount }} Transaksi</p>
         </template>
       </Card>
     </div>
 
-    <!-- Tabel Transaksi Terbaru -->
-    <div class="mt-8 bg-surface border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-      <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-center">
-        <h3 class="font-semibold text-slate-900 text-lg">Transaksi Terbaru</h3>
-        <button class="text-sm text-primary font-medium hover:underline">Lihat Semua</button>
+    <!-- Tabel Transaksi Terkini -->
+    <div class="bg-surface border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+        <div>
+          <h3 class="font-semibold text-slate-900 text-base">Transaksi Terkini</h3>
+          <p class="text-xs text-slate-500">5 transaksi kas terbaru yang tercatat di sistem.</p>
+        </div>
+        <RouterLink to="/ledger" class="text-xs text-primary font-semibold hover:underline">
+          Lihat Buku Besar Lengkap &rarr;
+        </RouterLink>
       </div>
 
       <div class="overflow-x-auto">
-        <table class="w-full text-left border-collapse">
+        <table class="w-full text-left border-collapse text-sm">
           <thead>
-            <tr class="bg-slate-50 text-slate-500 text-sm border-b border-slate-200">
-              <th class="px-6 py-4 font-medium">ID / Hash</th>
-              <th class="px-6 py-4 font-medium">Kategori</th>
-              <th class="px-6 py-4 font-medium">Nominal</th>
-              <th class="px-6 py-4 font-medium">Status</th>
+            <tr class="bg-slate-50 text-slate-500 text-xs font-semibold uppercase tracking-wider border-b border-slate-200">
+              <th class="px-6 py-3.5">ID / Hash</th>
+              <th class="px-6 py-3.5">Kategori & Deskripsi</th>
+              <th class="px-6 py-3.5">Nominal</th>
+              <th class="px-6 py-3.5">Status</th>
             </tr>
           </thead>
-          <tbody class="text-sm">
-            <!-- Skeleton Loading dibungkus <template> -->
+          <tbody class="divide-y divide-slate-100">
+            <!-- Skeleton Loading -->
             <template v-if="isLoading">
-              <tr v-for="i in 3" :key="'skel-' + i" class="border-b border-slate-100">
-                <td class="px-6 py-4">
-                  <div class="h-4 bg-slate-100 animate-pulse rounded w-24"></div>
-                </td>
-                <td class="px-6 py-4">
-                  <div class="h-4 bg-slate-100 animate-pulse rounded w-32"></div>
-                </td>
-                <td class="px-6 py-4">
-                  <div class="h-4 bg-slate-100 animate-pulse rounded w-20"></div>
-                </td>
-                <td class="px-6 py-4">
-                  <div class="h-6 bg-slate-100 animate-pulse rounded-full w-20"></div>
+              <tr v-for="i in 3" :key="'skel-' + i">
+                <td class="px-6 py-4" colspan="4">
+                  <div class="h-5 bg-slate-100 animate-pulse rounded w-full"></div>
                 </td>
               </tr>
             </template>
 
             <!-- Empty State -->
             <tr v-else-if="recentTransactions.length === 0">
-              <td colspan="4" class="px-6 py-12 text-center text-slate-500">
+              <td colspan="4" class="px-6 py-10 text-center text-slate-500">
                 Belum ada transaksi tercatat.
               </td>
             </tr>
 
-            <!-- Data Render dibungkus <template> -->
+            <!-- Render Data -->
             <template v-else>
               <tr
                 v-for="tx in recentTransactions"
                 :key="tx.id"
-                class="border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                class="hover:bg-slate-50/80 transition-colors"
               >
-                <td class="px-6 py-4">
-                  <div class="font-mono text-slate-800 text-xs truncate max-w-[120px]">
-                    {{ tx.tx_hash || `REQ-${tx.id}` }}
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="font-mono text-slate-800 text-xs font-medium">
+                    {{ tx.tx_hash ? `${tx.tx_hash.substring(0, 10)}...` : `#REQ-${tx.id}` }}
                   </div>
-                  <div class="text-xs text-slate-400 mt-1">{{ formatDate(tx.created_at) }}</div>
+                  <div class="text-[11px] text-slate-400 mt-0.5">{{ formatDate(tx.created_at) }}</div>
                 </td>
                 <td class="px-6 py-4">
-                  <div class="text-slate-700">{{ tx.category }}</div>
-                  <div class="text-xs text-slate-500 mt-0.5 truncate max-w-[200px]">
+                  <div class="font-medium text-slate-800">{{ tx.category }}</div>
+                  <div class="text-xs text-slate-500 truncate max-w-xs mt-0.5" :title="tx.description">
                     {{ tx.description }}
                   </div>
                 </td>
                 <td
-                  class="px-6 py-4 font-medium tabular-nums"
+                  class="px-6 py-4 font-semibold tabular-nums whitespace-nowrap"
                   :class="tx.type === 'cash_in' ? 'text-emerald-600' : 'text-slate-900'"
                 >
                   {{ tx.type === 'cash_in' ? '+' : '-' }} {{ formatRupiah(tx.amount) }}
                 </td>
-                <td class="px-6 py-4">
-                  <!-- Status Dinamis -->
+                <td class="px-6 py-4 whitespace-nowrap">
                   <span
                     v-if="tx.status === 'completed'"
-                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700"
+                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800"
                   >
-                    <i class="pi pi-check-circle text-[10px]"></i> Selesai
+                    <i class="pi pi-check-circle text-[10px]"></i> Selesai (On-Chain)
                   </span>
                   <span
                     v-else-if="tx.status === 'pending'"
-                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700"
+                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"
                   >
-                    <i class="pi pi-clock text-[10px]"></i> Menunggu
+                    <i class="pi pi-clock text-[10px]"></i> Menunggu Ketua
                   </span>
                   <span
                     v-else
-                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700"
+                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"
                   >
                     <i class="pi pi-times-circle text-[10px]"></i> Ditolak
                   </span>
