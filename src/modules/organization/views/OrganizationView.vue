@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import Swal from 'sweetalert2'
 import { organizationService } from '../../../core/api/organizationService'
+import { web3Service, type WalletState } from '../../../core/contracts/web3Service'
 import { useAuthStore } from '../../auth/stores/auth'
 import type { OrganizationDetails, Member } from '../../../core/types/organization'
 import type { UserRole } from '../../../core/types/auth'
@@ -10,6 +11,15 @@ const auth = useAuthStore()
 
 const orgDetails = ref<OrganizationDetails | null>(null)
 const isLoading = ref(true)
+const isLinkingWallet = ref(false)
+
+// State Web3 MetaMask
+const walletState = ref<WalletState>({
+  isConnected: false,
+  address: null,
+  networkName: null,
+  balanceEth: null,
+})
 
 // State Modal Tambah Anggota
 const isAddMemberModalOpen = ref(false)
@@ -33,9 +43,59 @@ const fetchOrganization = async () => {
   }
 }
 
+const checkWeb3Wallet = async () => {
+  try {
+    const current = await web3Service.getCurrentWallet()
+    if (current) {
+      walletState.value = current
+    }
+  } catch (err) {
+    console.warn('Web3 wallet check:', err)
+  }
+}
+
 onMounted(() => {
   fetchOrganization()
+  checkWeb3Wallet()
 })
+
+const handleConnectMetaMask = async () => {
+  try {
+    const res = await web3Service.connectWallet()
+    walletState.value = res
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'success',
+      title: `MetaMask Terhubung: ${res.address?.substring(0, 6)}...${res.address?.substring(res.address.length - 4)}`,
+      showConfirmButton: false,
+      timer: 3000,
+    })
+  } catch (err: any) {
+    Swal.fire('Koneksi Gagal', err.message || 'Gagal menghubungkan MetaMask.', 'error')
+  }
+}
+
+const handleLinkWalletToProfile = async () => {
+  if (!walletState.value.address) return
+  isLinkingWallet.value = true
+  try {
+    const res = await organizationService.updateMyWallet(walletState.value.address)
+    if (res.success) {
+      Swal.fire({
+        title: 'Wallet Berhasil Ditautkan!',
+        text: `Alamat dompet ${walletState.value.address} telah terdaftar resmi ke akun Anda di database organisasi.`,
+        icon: 'success',
+        confirmButtonColor: '#5B21B6',
+      })
+      await fetchOrganization()
+    }
+  } catch (err: any) {
+    Swal.fire('Gagal', err.message || 'Gagal menautkan wallet ke profil.', 'error')
+  } finally {
+    isLinkingWallet.value = false
+  }
+}
 
 const formatRupiah = (value: number) => {
   return new Intl.NumberFormat('id-ID', {
@@ -45,13 +105,13 @@ const formatRupiah = (value: number) => {
   }).format(value)
 }
 
-const copyToClipboard = (text: string) => {
+const copyToClipboard = (text: string, label: string = 'Alamat') => {
   navigator.clipboard.writeText(text)
   Swal.fire({
     toast: true,
     position: 'top-end',
     icon: 'success',
-    title: 'Alamat Smart Contract disalin!',
+    title: `${label} berhasil disalin!`,
     showConfirmButton: false,
     timer: 2000,
   })
@@ -202,6 +262,67 @@ const getRoleLabel = (role: UserRole) => {
       </div>
     </div>
 
+    <!-- Kartu Status Dompet Web3 / MetaMask Pengguna Aktif -->
+    <div class="bg-gradient-to-r from-purple-900 to-slate-900 text-white rounded-xl p-5 shadow-sm">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div class="space-y-1">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full" :class="walletState.isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'"></span>
+            <span class="text-xs font-semibold uppercase tracking-wider text-purple-200">
+              Integrasi Dompet Web3 (MetaMask / EVM)
+            </span>
+          </div>
+          <div v-if="walletState.isConnected" class="flex flex-wrap items-center gap-2 pt-0.5">
+            <span class="font-mono text-sm font-semibold text-white bg-white/10 px-2.5 py-1 rounded-lg border border-white/20">
+              {{ walletState.address?.substring(0, 8) }}...{{ walletState.address?.substring(walletState.address.length - 6) }}
+            </span>
+            <button
+              @click="copyToClipboard(walletState.address || '', 'Alamat Wallet')"
+              class="text-purple-300 hover:text-white p-1"
+              title="Salin Alamat Wallet"
+            >
+              <i class="pi pi-copy text-xs"></i>
+            </button>
+            <span class="text-xs text-purple-200 bg-purple-800/60 px-2 py-0.5 rounded">
+              {{ walletState.balanceEth }} ETH ({{ walletState.networkName }})
+            </span>
+          </div>
+          <div v-else class="text-xs text-slate-300">
+            Hubungkan dompet MetaMask untuk menandatangani transaksi on-chain secara langsung menggunakan akun Anda.
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <button
+            v-if="!walletState.isConnected"
+            @click="handleConnectMetaMask"
+            class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-2"
+          >
+            <i class="pi pi-wallet"></i>
+            Hubungkan MetaMask
+          </button>
+          <template v-else>
+            <button
+              @click="handleLinkWalletToProfile"
+              :disabled="isLinkingWallet"
+              class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              title="Simpan alamat dompet ini ke profil pengguna Anda di database"
+            >
+              <i class="pi pi-check"></i>
+              {{ isLinkingWallet ? 'Menyimpan...' : 'Tautkan ke Profil Saya' }}
+            </button>
+            <button
+              @click="handleConnectMetaMask"
+              class="px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs rounded-lg transition-colors"
+              title="Ganti atau hubungkan ulang dompet"
+            >
+              <i class="pi pi-refresh"></i>
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+
     <!-- Tabel Daftar Anggota & Peran (RBAC) -->
     <div class="bg-surface border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
@@ -220,7 +341,7 @@ const getRoleLabel = (role: UserRole) => {
             <tr class="bg-slate-50 text-slate-500 text-xs font-semibold uppercase tracking-wider border-b border-slate-200">
               <th class="px-6 py-3.5">Nama & Email</th>
               <th class="px-6 py-3.5">Peran (Role)</th>
-              <th class="px-6 py-3.5">Wallet Address</th>
+              <th class="px-6 py-3.5">Wallet Address EVM</th>
               <th class="px-6 py-3.5">Bergabung</th>
             </tr>
           </thead>
@@ -244,8 +365,20 @@ const getRoleLabel = (role: UserRole) => {
                   {{ getRoleLabel(member.role) }}
                 </span>
               </td>
-              <td class="px-6 py-4 font-mono text-xs text-slate-600">
-                {{ member.wallet_address || '-' }}
+              <td class="px-6 py-4 font-mono text-xs">
+                <div v-if="member.wallet_address" class="flex items-center gap-1.5">
+                  <span class="text-purple-700 font-semibold bg-purple-50 px-2.5 py-1 rounded-md border border-purple-200">
+                    {{ member.wallet_address.substring(0, 6) }}...{{ member.wallet_address.substring(member.wallet_address.length - 4) }}
+                  </span>
+                  <button
+                    @click="copyToClipboard(member.wallet_address, 'Alamat Wallet')"
+                    class="text-slate-400 hover:text-slate-600 p-1"
+                    title="Salin Alamat Wallet Lengkap"
+                  >
+                    <i class="pi pi-copy text-xs"></i>
+                  </button>
+                </div>
+                <span v-else class="text-slate-400 italic text-xs">Belum ditautkan</span>
               </td>
               <td class="px-6 py-4 text-xs text-slate-500">
                 {{ member.joined_at }}

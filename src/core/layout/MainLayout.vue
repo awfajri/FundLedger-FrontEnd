@@ -1,9 +1,38 @@
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '../../modules/auth/stores/auth'
+import { web3Service, type WalletState } from '../contracts/web3Service'
 
 const auth = useAuthStore()
 const route = useRoute()
+
+const walletState = ref<WalletState>({
+  isConnected: false,
+  address: null,
+  networkName: null,
+  balanceEth: null,
+})
+
+const checkWallet = async () => {
+  const current = await web3Service.getCurrentWallet()
+  if (current) {
+    walletState.value = current
+  }
+}
+
+const connectMetaMask = async () => {
+  try {
+    const res = await web3Service.connectWallet()
+    walletState.value = res
+  } catch (err: any) {
+    console.warn('Connect wallet error:', err.message)
+  }
+}
+
+onMounted(() => {
+  checkWallet()
+})
 
 const isRouteActive = (path: string) => {
   if (path === '/') return route.path === '/'
@@ -187,7 +216,7 @@ const isRouteActive = (path: string) => {
         <!-- Organization Info / Mobile Logo -->
         <div class="flex items-center gap-3">
           <img
-            src="/public/images/logo.png"
+            src="/images/logo.png"
             alt="Logo HIMASASIN"
             class="md:hidden w-8 h-8 rounded-lg object-contain bg-slate-100"
           />
@@ -201,6 +230,28 @@ const isRouteActive = (path: string) => {
               >Smart Contract EVM Sepolia</span
             >
           </div>
+        </div>
+
+        <!-- Web3 MetaMask Status / Connect -->
+        <div class="flex items-center gap-2">
+          <div
+            v-if="walletState.isConnected"
+            class="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-mono"
+            title="Dompet Web3 MetaMask Terhubung"
+          >
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>{{ walletState.address?.substring(0, 6) }}...{{ walletState.address?.substring(walletState.address.length - 4) }}</span>
+            <span class="text-[10px] text-emerald-600 font-sans font-medium">({{ walletState.balanceEth }} ETH)</span>
+          </div>
+          <button
+            v-else
+            @click="connectMetaMask"
+            class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-50 text-primary border border-purple-200 hover:bg-purple-100 transition-colors shadow-sm"
+            title="Hubungkan dompet MetaMask browser Anda"
+          >
+            <i class="pi pi-wallet text-sm"></i>
+            <span>Connect MetaMask</span>
+          </button>
         </div>
 
         <!-- User Profile -->

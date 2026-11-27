@@ -5,8 +5,8 @@ export const INITIAL_MOCK_ORGANIZATION: OrganizationDetails = {
   id: 1,
   name: 'Himpunan Mahasiswa Sastra Mesin',
   balance: 15000,
-  smart_contract_address: '0xd8b934580fcE35a11B58C6D73aDeE468a2833fa8',
-  network: 'Remix VM / Sepolia EVM Testnet',
+  smart_contract_address: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+  network: 'Hardhat Local Node (Chain ID 31337)',
   members_count: 3,
   created_at: '2026-01-15T08:00:00Z',
   members: [

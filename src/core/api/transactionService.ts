@@ -1,4 +1,5 @@
 import apiClient from './client'
+import { web3Service } from '../contracts/web3Service'
 import type {
   Transaction,
   DashboardMetrics,
@@ -77,15 +78,33 @@ export const transactionService = {
   },
 
   async createCashIn(formData: FormData): Promise<{ success: boolean; data?: Transaction }> {
+    const amount = Number(formData.get('amount')) || 0
+    const category = String(formData.get('category')) || 'Pemasukan'
+
+    // Jika pengguna menghubungkan MetaMask, eksekusi transaksi on-chain terlebih dahulu
+    try {
+      const wallet = await web3Service.getCurrentWallet()
+      if (wallet?.isConnected) {
+        const tempId = `TRX-${Date.now()}`
+        const onChainHash = await web3Service.recordCashInOnChain(tempId, amount, category)
+        formData.append('tx_hash', onChainHash)
+      }
+    } catch (e: any) {
+      console.warn('MetaMask cash in signature bypassed/declined:', e.message)
+    }
+
     try {
       const response = await apiClient.post('/transactions/cash-in', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      return { success: true, data: response.data.data || response.data }
+      const txData = response.data.transaction || response.data.data || response.data
+      if (txData) {
+        localTransactions.unshift(txData)
+        localBalance += amount
+      }
+      return { success: true, data: txData }
     } catch {
       // Offline fallback: simulasikan pembuatan cash in sukses
-      const amount = Number(formData.get('amount')) || 0
-      const category = String(formData.get('category')) || 'Pemasukan'
       const description = String(formData.get('description')) || ''
       const newTx: Transaction = {
         id: Date.now(),
@@ -94,13 +113,13 @@ export const transactionService = {
         amount,
         description,
         status: 'completed',
-        tx_hash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
+        tx_hash: (formData.get('tx_hash') as string) || `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
         block_number: 6844000 + Math.floor(Math.random() * 100),
-        maker_id: 2,
-        maker_name: 'Siti Sarah Rahmawati (Bendahara)',
-        checker_id: 1,
-        checker_name: 'Sistem On-Chain Validator',
-        checker_wallet_address: '0x3F5...f0bE',
+        maker_id: 1,
+        maker_name: 'Auf Japri (Bendahara)',
+        checker_id: 2,
+        checker_name: 'Mfik Kaaga (Ketua)',
+        checker_wallet_address: '0x71Cab8294a61b9...a19C',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
@@ -111,14 +130,19 @@ export const transactionService = {
   },
 
   async createCashOut(formData: FormData): Promise<{ success: boolean; data?: Transaction }> {
+    const amount = Number(formData.get('amount')) || 0
+    const category = String(formData.get('category')) || 'Pengeluaran'
+
     try {
       const response = await apiClient.post('/transactions/cash-out', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      return { success: true, data: response.data.data || response.data }
+      const txData = response.data.transaction || response.data.data || response.data
+      if (txData) {
+        localTransactions.unshift(txData)
+      }
+      return { success: true, data: txData }
     } catch {
-      const amount = Number(formData.get('amount')) || 0
-      const category = String(formData.get('category')) || 'Pengeluaran'
       const description = String(formData.get('description')) || ''
       const newTx: Transaction = {
         id: Date.now(),
@@ -127,8 +151,8 @@ export const transactionService = {
         amount,
         description,
         status: 'pending',
-        maker_id: 2,
-        maker_name: 'Siti Sarah Rahmawati (Bendahara)',
+        maker_id: 1,
+        maker_name: 'Auf Japri (Bendahara)',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
@@ -138,22 +162,45 @@ export const transactionService = {
   },
 
   async approveTransaction(id: number, txHash?: string): Promise<{ success: boolean; tx_hash?: string }> {
+    let finalHash = txHash
+
+    // Jika pengguna menghubungkan MetaMask, eksekusi persetujuan di Smart Contract on-chain
     try {
-      const generatedHash = txHash || `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
+      const wallet = await web3Service.getCurrentWallet()
+      if (wallet?.isConnected) {
+        finalHash = await web3Service.approveCashOutOnChain(`TRX-${id}`)
+      }
+    } catch (e: any) {
+      console.warn('MetaMask approve signature bypassed/declined:', e.message)
+    }
+
+    try {
+      const generatedHash = finalHash || `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
       const response = await apiClient.post(`/transactions/${id}/approve`, {
         tx_hash: generatedHash,
       })
       const txData = response.data.transaction || response.data
-      return { success: true, tx_hash: txData?.tx_hash || generatedHash }
+      const resolvedHash = txData?.tx_hash || generatedHash
+
+      const localTx = localTransactions.find((t) => t.id === id)
+      if (localTx) {
+        localTx.status = 'completed'
+        localTx.tx_hash = resolvedHash
+        localTx.checker_id = 2
+        localTx.checker_name = 'Mfik Kaaga (Ketua)'
+        localBalance -= localTx.amount
+      }
+
+      return { success: true, tx_hash: resolvedHash }
     } catch {
       const tx = localTransactions.find((t) => t.id === id)
       if (tx) {
         tx.status = 'completed'
-        tx.tx_hash = txHash || `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
+        tx.tx_hash = finalHash || `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
         tx.block_number = 6844500 + Math.floor(Math.random() * 100)
-        tx.checker_id = 1
+        tx.checker_id = 2
         tx.checker_name = 'Mfik Kaaga (Ketua)'
-        tx.checker_wallet_address = '0x71C...a19C'
+        tx.checker_wallet_address = '0x71Cab8294a61b9...a19C'
         tx.updated_at = new Date().toISOString()
         localBalance -= tx.amount
         return { success: true, tx_hash: tx.tx_hash }

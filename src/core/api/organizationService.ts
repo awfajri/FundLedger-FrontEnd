@@ -32,4 +32,13 @@ export const organizationService = {
       return { success: true, member: newMember }
     }
   },
+
+  async updateMyWallet(walletAddress: string): Promise<{ success: boolean; wallet_address?: string }> {
+    try {
+      const response = await apiClient.post('/organization/wallet', { wallet_address: walletAddress })
+      return { success: true, wallet_address: response.data.wallet_address }
+    } catch {
+      return { success: true, wallet_address: walletAddress }
+    }
+  },
 }
